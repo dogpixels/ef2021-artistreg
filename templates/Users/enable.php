@@ -1,0 +1,1 @@
+<?php // controller always redirects to other actions, no view required
