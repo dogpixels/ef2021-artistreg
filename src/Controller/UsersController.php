@@ -170,21 +170,12 @@ class UsersController extends AppController
      * @return \Cake\Http\Response|null|void Redirects on successful edit, renders view otherwise.
      * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
      */
-    public function edit($override_id = null)
+    public function edit($id = null)
     {
         $this->request->allowMethod(['get', 'post', 'put']);
 
-        // get own $id
-        $user = $this->Users->get($this->Authentication->getIdentity()->get('id'));
-        $id = $user->id;
-
-        // if an admin desires to edit another user, override $id 
-        if ($override_id !== null && $user->level >= 2) {
-            $id = $override_id;
-        }
-
-        // get user associated with $id
-        $subject = $this->Users->get($id);
+        // get user associated with $id (or own user, if non-admin or $id == null)
+        $subject = $this->get_user($id);
 
         // if user is invalid, fall back to own user entry
         if ($subject == null) {
@@ -266,14 +257,49 @@ class UsersController extends AppController
      */
     public function delete($id = null)
     {
-        $this->request->allowMethod(['post', 'delete']);
-        $user = $this->Users->get($id);
-        if ($this->Users->delete($user)) {
-            $this->Flash->success(__("The user has been deleted."));
+        $this->request->allowMethod(['get']);
+        $subject = $this->get_user($id);
+
+        if ($subject == null) {
+            $this->Flash->error(__("Error finding this user."));
+            return $this->redirect(['action' => 'index']);
+        }
+
+        if ($subject->get('level') >= 2) {
+            $this->Flash->error(__("You cannot delete an admin."));
+            return $this->redirect(['action' => 'index']);
+        }
+
+        if ($this->Users->delete($subject)) {
+            $this->Flash->success(__("Account deleted."));
+            // if user deleted themselves, logout
+            if ($this->Authentication->getIdentity()->get('id') === $subject->id) {
+                $this->Authentication->logout();
+            }
         } else {
-            $this->Flash->error(__("The user could not be deleted. Please, try again."));
+            $this->Flash->error(__("Account could not be deleted. Please try again."));
         }
 
         return $this->redirect(['action' => 'index']);
+    }
+
+    /**
+     * If called by an admin, returns the identity with $id.
+     * If $id == null or current user is not an admin, returns own identity.
+     * @param Number|Null $id of the desired user or null for own identity
+     * @return User user entry of $id if current is admin, otherwise own identity 
+     */
+    private function get_user($override_id) {
+        // get own $id
+        $user = $this->Users->get($this->Authentication->getIdentity()->get('id'));
+        $id = $user->id;
+
+        // if an admin desires to edit another user, override $id 
+        if ($override_id !== null && $user->level >= 2) {
+            $id = $override_id;
+        }
+
+        // get user associated with $id
+        return $this->Users->get($id);
     }
 }
