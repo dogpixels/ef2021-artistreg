@@ -13,7 +13,6 @@ docker >= 20.10.5
 * now you're good to log in with this administrator account
 
 #### todo
-* implement account delete
 * build frontend form for the data field
 
 # Installation
