@@ -90,7 +90,7 @@ class UsersController extends AppController
                 $this->Users->save($subject);
 
                 // construct recover link
-                $link = Router::url(['controller' => 'users', 'action' => 'renew', $subject->id, $token]);
+                $link = Router::url(['controller' => 'users', 'action' => 'renew', $subject->email, $token], true);
                 
                 // construct email message
                 $message = __("Hello,\n\nA request to reset your password for the Eurofurence Online 2021 Artist Registration has been received.\nTo do so, please follow the following link: {$link}.\n\nCheers,\ndraconigen, Eurofurence");
@@ -107,12 +107,12 @@ class UsersController extends AppController
         }
     }
 
-    public function renew($id = null, $token = null) {
-        if ($id == null || $token == null) {
+    public function renew($email = null, $token = null) {
+        if ($email == null || $token == null) {
             return $this->redirect(['action' => 'login']);
         }
 
-        $user = $this->Users->find()->where(['id' => $id, 'token' => $token])->first();
+        $user = $this->Users->find()->where(['email' => $email, 'token' => $token])->first();
 
         if ($user === null) {
             $this->Flash->error(__("The password recovery link seems to be expired. Try again or contact tech support."));
