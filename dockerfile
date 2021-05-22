@@ -28,6 +28,7 @@ RUN composer create-project --no-interaction --prefer-dist cakephp/app:~4.0 .
 
 # install additional cakephp plugins required specifically by this application 
 RUN composer require "cakephp/authentication:^2.0"
+RUN composer require "alt3/cakephp-swagger"
 
 # copy application files
 COPY . /var/www/html
