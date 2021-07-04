@@ -9,7 +9,7 @@ docker >= 20.10.5
 * `git clone https://github.com/dogpixels/ef2021-artistreg`
 * copy __app_local.php__ into __config/__
 * build and run the docker container by running __reload.ps1__
-* go to `localhost/users/renew/admin%40localhost/firstrunsetup` and set a password for the initial administrator account
+* go to `localhost/users/renew/admin%40localhost/setup` and set a password for the initial administrator account
 * now you're good to log in with this administrator account
 
 #### todo
