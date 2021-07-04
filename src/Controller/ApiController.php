@@ -162,10 +162,17 @@ class ApiController extends AppController
      */
     public function login()
     {
-        $this->request->allowMethod(['post']);
+        $this->request->allowMethod(['get', 'post']);
 
         $status = 200;
         $data = ['errors' => [], 'messages' => [], 'redirect' => "", 'payload' => ""];
+
+        if($this->request->is('get')) {
+            // debug($this->request->getParam('_csrfToken'));
+            // $data['csrf'] = $this->request->getParam('_csrfToken');
+            
+            return $this->response->withType('application/json')->withStatus($status)->withStringBody(json_encode($data));
+        }
 
         $result = $this->Authentication->getResult();
         if ($result->isValid()) {

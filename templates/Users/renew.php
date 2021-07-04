@@ -1,19 +1,13 @@
-<?php
-/**
- * @var \App\View\AppView $this
- * @var \App\Model\Entity\User $user
- */
-?>
-<div class="users form content">
+<section>
+	<h1>Password Recovery</h1>
+	<div uk-alert class="uk-alert-primary">
+		<p>Welcome back <strong><?= $email ?></strong>, please enter a new password.</p>
+	</div>
     <?= $this->Form->create() ?>
     <fieldset>
-        <legend><?= __('Recover Lost Password') ?></legend>
-        <?php
-            echo $this->Form->hidden('email', ['value' => $email]);
-            echo $this->Form->control('email_disabled', ['label' => 'eMail', 'value' => $email, 'disabled' => true]);
-            echo $this->Form->control('password', ['label' => 'New Password', 'required' => true]);
-        ?>
+		<?= $this->Form->hidden('email', ['value' => $email]) ?>
+		<?= $this->Form->control('password', ['class' => 'uk-input', 'label' => false, 'placeholder' => 'New Password', 'required' => true]) ?>			
     </fieldset>
-    <?= $this->Form->button(__('Submit')) ?>
+    <?= $this->Form->submit('submit', ['class' => 'uk-button uk-button-primary']) ?>
     <?= $this->Form->end() ?>
-</div>
+</section>

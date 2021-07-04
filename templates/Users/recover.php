@@ -1,17 +1,12 @@
-<?php
-/**
- * @var \App\View\AppView $this
- * @var \App\Model\Entity\User $user
- */
-?>
-<div class="users form content">
+<section>
+	<h1>Password Recovery</h1>
+	<div uk-alert class="uk-alert-primary">
+		<p>Enter the eMail address that you registered with and you'll receive an automated eMail with a link to change your password.<br />If that recovery eMail doesn't seem to arrive within 24 hours, check your spam folder and contact tech support.</p>
+	</div>
     <?= $this->Form->create() ?>
     <fieldset>
-        <legend><?= __('Recover Lost Password') ?></legend>
-        <?php
-            echo $this->Form->control('email', ['label' => 'eMail']);
-        ?>
+        <?= $this->Form->control('email', ['label' => 'eMail', 'class' => 'uk-input', 'placeholder' => 'Email', 'label' => false]) ?>
     </fieldset>
-    <?= $this->Form->button(__('Submit')) ?>
+    <?= $this->Form->submit('submit', ['class' => 'uk-button uk-button-primary']) ?>
     <?= $this->Form->end() ?>
-</div>
+</section>

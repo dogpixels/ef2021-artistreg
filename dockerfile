@@ -4,9 +4,9 @@
 # get the latest supported php version bundle apache
 FROM php:8.0-apache
 
-# install required packages for composer
+# install required packages for composer and deployment
 RUN apt-get update && \
-	apt-get install -y git unzip
+	apt-get install -y git zip unzip smbclient
 
 # enable apache mod_rewrite
 RUN a2enmod rewrite && \
@@ -28,7 +28,7 @@ RUN composer create-project --no-interaction --prefer-dist cakephp/app:~4.0 .
 
 # install additional cakephp plugins required specifically by this application 
 RUN composer require "cakephp/authentication:^2.0"
-RUN composer require "alt3/cakephp-swagger"
+#RUN composer require "alt3/cakephp-swagger" # removed because it requires php >= 8.0.0, which is not available yet
 
 # copy application files
 COPY . /var/www/html

@@ -72,7 +72,7 @@ class Application extends BaseApplication
         }
 
         // Load more plugins here
-        $this->addPlugin('Alt3/Swagger');
+        // $this->addPlugin('Alt3/Swagger');
     }
 
     /**
@@ -152,7 +152,7 @@ class Application extends BaseApplication
     public function getAuthenticationService(ServerRequestInterface $request): AuthenticationServiceInterface
     {
         $authenticationService = new AuthenticationService([
-            'unauthenticatedRedirect' => '/users/login',
+            'unauthenticatedRedirect' => '/efo2021/users/login',
             'queryParam' => 'redirect',
         ]);
 
@@ -172,7 +172,7 @@ class Application extends BaseApplication
                 'username' => 'email',
                 'password' => 'password',
             ],
-            'loginUrl' => '/users/login',
+            'loginUrl' => '/efo2021/users/login',
         ]);
 
         return $authenticationService;

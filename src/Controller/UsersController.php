@@ -15,12 +15,21 @@ use Cake\Routing\Router;
  */
 class UsersController extends AppController
 {
+    public function initialize(): void
+    {
+        parent::initialize();
+        $this->loadComponent('RequestHandler');
+        $this->loadComponent('Security');
+    }
+	
     public function beforeFilter(\Cake\Event\EventInterface $event)
     {
         parent::beforeFilter($event);
-        // Configure the login action to not require authentication, preventing
-        // the infinite redirect loop issue
+        // Configure certain actions to not require authentication
         $this->Authentication->addUnauthenticatedActions(['login', 'register', 'recover', 'renew']);
+
+        // disable CSRF checks for ajax file uploads
+		$this->Security->setConfig('unlockedActions', ['setbanner', 'setshowcase']);
     }
 
     /**
@@ -173,6 +182,7 @@ class UsersController extends AppController
     public function edit($id = null)
     {
         $this->request->allowMethod(['get', 'post', 'put']);
+		$errors = [];
 
         // get user associated with $id (or own user, if non-admin or $id == null)
         $subject = $this->get_user($id);
@@ -186,15 +196,49 @@ class UsersController extends AppController
         // save edit
         if ($this->request->is(['patch', 'post', 'put'])) {
             $subject = $this->Users->patchEntity($subject, $this->request->getData());
-            if ($this->Users->save($subject)) {
-                $this->Flash->success(__("Changes have been saved."));
-                return $this->redirect(['action' => 'index']);
-            }
-            $this->Flash->error(__("Error saving this user."));
-        }
+			
+			$errors = $this->validate(json_decode($subject->data));
+			
+			if (empty($errors)) {
+				if ($this->Users->save($subject)) {
+					$this->Flash->success(__("Changes have been saved."));
+					return $this->redirect(['action' => 'index']);
+				}
+				debug($subject);
+				$this->Flash->error(__("Unknown error, please contact tech support."));
+			}
+			else {
+				$this->Flash->error(__("Changes could not be saved, please check the error details below."));
+			}
+		}
         
         $this->set('subject', $subject);
+		$this->set('errors', $errors);
+		$this->set('banner_upload_url', Router::url(['action' => 'setbanner'], true));
+		$this->set('showcase_upload_url', Router::url(['action' => 'setshowcase'], true));
     }
+	
+	/**
+	 * Upload files to user showcase.
+	 * @param Binary image file(s)
+	 * @return String url of the successfully uploaded image.
+	 */
+	public function setbanner($id = null) {
+		$this->autoRender = false;
+		
+		// get user associated with $id (or own user, if non-admin or $id == null)
+        $subject = $this->get_user($id);
+		
+        if (!$this->request->is('ajax'))
+			return $this->redirect(['action' => 'index']);
+
+		$data = $this->request-getData();
+		
+		$return = $data;
+		
+		return $this->response->withType('application/json')
+			->withStringBody(json_encode($return));
+	}
 
     /**
      * Admin method
@@ -302,4 +346,35 @@ class UsersController extends AppController
         // get user associated with $id
         return $this->Users->get($id);
     }
+	
+	/**
+	 * Validate user input from the edit action.
+	 * @param Object data payload of an user
+	 * @return Array of error identifying strings
+	 */
+	private function validate($d) {
+		$errors = [];
+		
+		if (strlen($d->name) < 3)
+			$errors[] = 'name_too_short';
+		
+		if (strlen($d->name) > 100)
+			$errors[] = 'name_too_long';
+		
+		if (strlen($d->about) > 4000)
+			$errors[] = 'about_too_long';
+		
+		if (strlen($d->tags) > 300)
+			$errors[] = 'tags_too_long';
+		
+		foreach($d->links as $key => $value) {
+			if (strlen($value) < 3)
+				$errors[] = "links_${key}_too_short";
+			
+			if (strlen($value) > 100)
+				$errors[] = "links_${key}_too_long";
+		}
+		
+		return $errors;
+	}
 }

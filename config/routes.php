@@ -47,4 +47,6 @@ $routes->setRouteClass(DashedRoute::class);
 $routes->scope('/', function (RouteBuilder $builder) {
     $builder->connect('/', ['controller' => 'Users', 'action' => 'index']);
     $builder->fallbacks();
+    $builder->setExtensions(['json']);
 });
+
