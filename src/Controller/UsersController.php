@@ -28,8 +28,8 @@ class UsersController extends AppController
         // Configure certain actions to not require authentication
         $this->Authentication->addUnauthenticatedActions(['login', 'register', 'recover', 'renew']);
 
-        // disable CSRF checks for ajax file uploads
-		$this->Security->setConfig('unlockedActions', ['setbanner', 'setshowcase']);
+        // disable CSRF checks for ajax operations
+		$this->Security->setConfig('unlockedActions', ['setbanner', 'setshowcase', 'remove']);
     }
 
     /**
@@ -72,9 +72,17 @@ class UsersController extends AppController
             }
 
             $user = $this->Users->patchEntity($user, $this->request->getData());
+			$user->data = '{"links":{},"name":"","about":"","tags":"","showcase":[],"icon":""}';
             if ($this->Users->save($user)) {
                 $this->Flash->success(__("Thank you for signing up. Your account will be reviewed and enabled accordingly within 24 hours. Check back tomorrow!"));
-                return $this->redirect(['action' => 'index']);
+                
+				// notify tech support
+                // $mailer = new Mailer('default');
+                // $mailer
+                    // ->setSubject(__("[EFO2021] new registration: {$user->email}"))
+                    // ->deliver("New registration: \"{$user->email}\"; review at " . Router::url(['action' => 'admin'], true));
+				
+				return $this->redirect(['action' => 'index']);
             }
             $this->Flash->error(__("There was some error. Please try again or contact tech support if this issue persists."));
         }
@@ -92,7 +100,7 @@ class UsersController extends AppController
             
             if ($subject !== null) {
                 // generate authorization token
-                $token = uniqid('', true);
+                $token = uniqid();
 
                 // associate token with account
                 $subject->token = $token;
@@ -204,40 +212,267 @@ class UsersController extends AppController
 					$this->Flash->success(__("Changes have been saved."));
 					return $this->redirect(['action' => 'index']);
 				}
-				debug($subject);
+				// debug($subject);
 				$this->Flash->error(__("Unknown error, please contact tech support."));
 			}
 			else {
 				$this->Flash->error(__("Changes could not be saved, please check the error details below."));
 			}
 		}
+		
+		// prepare data
+		$subject->data = mb_ereg_replace("'", "\'", $subject->data);
+		$subject->data = mb_ereg_replace('"', '\"', $subject->data);
         
         $this->set('subject', $subject);
 		$this->set('errors', $errors);
 		$this->set('banner_upload_url', Router::url(['action' => 'setbanner'], true));
 		$this->set('showcase_upload_url', Router::url(['action' => 'setshowcase'], true));
+		$this->set('remove_image_url', Router::url(['action' => 'remove'], true));
     }
 	
 	/**
-	 * Upload files to user showcase.
-	 * @param Binary image file(s)
-	 * @return String url of the successfully uploaded image.
+	 * Upload an avatar / banner file.
+	 * @param Number user id
+	 * @return String url of the successfully uploaded image as JSON.
 	 */
 	public function setbanner($id = null) {
-		$this->autoRender = false;
+		return $this->upload($id, 'icon');
+	}
+	
+	/**
+	 * Upload files to user showcase.
+	 * @param Number user id
+	 * @return String url of the successfully uploaded images as JSON.
+	 */
+	public function setshowcase($id = null) {
+		return $this->upload($id, 'showcase');
+	}
 		
+	/**
+	 * handle image file uploads
+	 * @param Number user id
+	 * @param Number mode: 0 => icon, 1 => showcase
+	 * @return String url of the successfully uploaded images as JSON.
+	 */
+    private function upload($id, $mode) {
+        $this->autoRender = false;
+		
+        if (!$this->request->is('post'))
+			return $this->redirect(['action' => 'index']);
+
+		$return = ['errors' => []];
+		$status = 200;
+
 		// get user associated with $id (or own user, if non-admin or $id == null)
         $subject = $this->get_user($id);
 		
-        if (!$this->request->is('ajax'))
+		$max_images = 6;
+        $max_filesize = 5 * 1024 * 1024; // 5MB
+		$files_dir = 'files';
+
+		$files = $this->request->getData('files');
+
+		if (!isset($files)) {
+            $return['errors']['general'] = 'no files';
+            return $this->response->withType('application/json')
+            ->withStatus(400)
+            ->withStringBody(json_encode($return));
+        }
+
+        $data = json_decode($subject->data);
+
+        for ($i=0; $i < count($files); $i++) {
+            $err  = $files[$i]->getError();
+            
+            if (!empty($err)) {
+                $return['errors'][$i] = 'php file processing error: ' . $err;
+                continue;
+            }
+
+            $orig = $files[$i]->getClientFilename();
+
+            if ($mode === 'showcase' && count($data->showcase) >= $max_images) {
+                $return['errors'][$i] = "{$orig}: showcase full";
+                continue;
+            }
+
+            $size = $files[$i]->getSize();
+
+            if ($size > $max_filesize) {
+                $return['errors'][$i] = "{$orig}: file too large ({$size} bytes)";
+                continue;
+            }
+            
+            $type = $files[$i]->getClientMediaType();
+
+            if (!in_array($type, ['image/jpeg', 'image/png', /*,'image/gif'*/])) {
+                $return['errors'][$i] = "{$orig}: invalid file type \"{$type}\"";
+                continue;
+            }
+            
+		    $name  = uniqid();
+            
+            switch($type) {
+                case 'image/jpeg': $name .= '.jpg'; break;
+                case 'image/png' : $name .= '.png'; break;
+                case 'image/gif' : $name .= '.gif'; break;
+            }
+            
+            $path = $files_dir . DS . $subject->id;
+
+            if (!file_exists($path))
+                mkdir($path, 0777, true);
+
+            $files[$i]->moveTo($path . DS . $name);
+
+            switch($mode) {
+                case 'icon':     $data->icon = $path . '/' . $name; break;
+                case 'showcase': $data->showcase[] = $path . '/' . $name; break;
+            }
+        }
+
+        $d = json_encode($data);
+
+        if ($d) {
+            $subject->data = $d;
+        }
+        else {
+            $return['errors']['json'] = "json encoding error: " . serialize($data);
+            return $this->response->withType('application/json')
+            ->withStatus(500)
+            ->withStringBody(json_encode($return));
+        }
+
+        if (!$this->Users->save($subject)) {
+            $return['errors']['userdata'] = "failed to save userdata: " . serialize($data);
+            return $this->response->withType('application/json')
+            ->withStatus(500)
+            ->withStringBody(json_encode($return));
+        }
+
+        // unless there's a general errors, return 200 for there might be successfully processed file
+        // if (!empty($return['errors'])) {
+            // $status = 400;
+        // }
+
+        $return['icon'] = $data->icon;
+        $return['showcase'] = $data->showcase;
+
+        return $this->response->withType('application/json')
+        ->withStatus($status)
+        ->withStringBody(json_encode($return));
+    }
+
+	/**
+	 * remove an image from user data listing and filesystem
+	 * @param String relative file path like files/13/icon.jpg
+	 * @param Number user id
+	 */
+    public function remove($id = null) {
+        $this->autoRender = false;
+		
+        if (!$this->request->is('delete'))
 			return $this->redirect(['action' => 'index']);
 
-		$data = $this->request-getData();
-		
-		$return = $data;
-		
-		return $this->response->withType('application/json')
+		$return = ['errors' => []];
+		$status = 200;
+
+		// get user associated with $id (or own user, if non-admin or $id == null)
+        $subject = $this->get_user($id);
+
+        $filepath = $this->request->getData()[0];
+
+        if ($filepath == null) {
+            $return['errors']['general'] = 'missing payload';
+			return $this->response->withType('application/json')
+			->withStatus(400)
 			->withStringBody(json_encode($return));
+		}
+
+        $data = json_decode($subject->data);
+
+        // check if user is permitted to that file
+        if (
+			$filepath !== $data->icon &&
+			!in_array($filepath, $data->showcase)
+		) {
+			$return['errors'][] = "{$filepath}: permission denied to user {$subject->id}";
+            return $this->response->withType('application/json')
+			->withStatus(403)
+			->withStringBody(json_encode($return));
+		}
+
+        // delete if icon
+        if ($filepath === $data->icon)
+        $data->icon = "";
+                    
+        // delete if in showcase
+        $offset = array_search($filepath, $data->showcase, true);
+        if ($offset !== false) {
+            array_splice($data->showcase, $offset, 1);
+        }
+
+        // save user data
+        $d = json_encode($data);
+
+        if ($d) {
+            $subject->data = $d;
+        }
+        else {
+            $return['errors']['json'] = "json encoding error: " . serialize($data);
+            return $this->response->withType('application/json')
+            ->withStatus(500)
+            ->withStringBody(json_encode($return));
+        }
+
+        if (!$this->Users->save($subject)) {
+            $return['errors']['userdata'] = "failed to save userdata: " . serialize($data);
+            return $this->response->withType('application/json')
+            ->withStatus(500)
+            ->withStringBody(json_encode($return));
+        }
+
+        // remove from filesystem
+        if (file_exists($filepath)) {
+            if (!unlink($filepath)) {
+                $return['errors']['filesystem'] = "{$filepath}: failed to delete";
+			}
+		}
+        else 
+            $return['errors']['filesystem'] = "{$filepath}: file not found";
+
+        $return['icon'] = $data->icon;
+        $return['showcase'] = $data->showcase;
+
+        return $this->response->withType('application/json')
+        ->withStatus($status)
+        ->withStringBody(json_encode($return));
+    }
+
+	/**
+	 * save image to user data in database
+	 * @param User user to save data for
+	 * @param String url / file name to save
+	 * @return Array: [status => bool, msg = ""]
+	 */
+	private function save_user_image($user, $url, $set_banner) {
+		$max_images = 6;
+		$showcase = 'showcase';
+		
+		$data = json_decode($user->data);
+			
+		if ($set_banner)
+			$data->icon = $url;
+		
+		else if (!$set_banner && count($data->{$showcase}) < $max_images)
+			$data->{$showcase}[] = $url;
+		
+		$user->data = json_encode($data);
+		
+		$this->Users->save($user);
+		
+		return ['icon' => $data->icon, 'showcase' => $data->showcase];
 	}
 
     /**
@@ -366,6 +601,15 @@ class UsersController extends AppController
 		
 		if (strlen($d->tags) > 300)
 			$errors[] = 'tags_too_long';
+		
+		if (str_contains($d->tags, ','))
+			$errors[] = 'tags_invalid_separator';
+		
+		if (str_contains($d->tags, ';'))
+			$errors[] = 'tags_invalid_separator';
+		
+		if (str_contains($d->tags, '+'))
+			$errors[] = 'tags_invalid_separator';
 		
 		foreach($d->links as $key => $value) {
 			if (strlen($value) < 3)

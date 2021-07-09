@@ -85,6 +85,12 @@ $links = [
 			</div>
 		<?php } ?>
 		
+		<?php if (in_array("tags_invalid_separator", $errors)) { ?>
+			<div uk-alert class="uk-alert-danger">
+				<strong>You seem to be using anything else than spaces to separate your tags. Make sure you use spaces!</strong>
+			</div>
+		<?php } ?>
+		
 		<input type="text" class="uk-input" id="tags" placeholder="Your space-separated tags (0 - 300 characters)" maxlength="300" />
 
 		<hr />
@@ -126,15 +132,16 @@ $links = [
 	</fieldset>
 	
 	<fieldset>
-		<legend>Gallery</legend>
+		<legend>Image Upload</legend>
 		
-		<h3>Banner</h3>
+		<h3>Avatar</h3>
 		
 		<div uk-alert class="uk-alert-primary">
-			<p>This banner will be displayed along with your artist listing entry and must be 400x200px.</p>
+			<p>This avatar will be displayed along with your artist listing entry and should have a <strong>square</strong> aspect ratio with at least 100x100px. The file must be not larger than 5MB and .jpg or .png.</p>
 		</div>
 		
 		<div class="js-upload-banner uk-placeholder uk-text-center">
+			<div id="display-icon"></div>
 			<span uk-icon="icon: cloud-upload"></span>
 			<span class="uk-text-middle">Upload a file by dropping it here or</span>
 			<div uk-form-custom>
@@ -150,14 +157,15 @@ $links = [
 		<h3>Showcase</h3>
 		
 		<div uk-alert class="uk-alert-primary">
-			<p>Upload up to six images for a brief showcase of your work. Each image should be smaller than 1000x1000px.</p>
+			<p>Upload up to six images for a brief showcase of your work. Each image should be smaller than 5MB and .jpg or .png.</p>
 		</div>
 		
 		<div class="js-upload-showcase uk-placeholder uk-text-center">
+			<div id="display-showcase"></div>
 			<span uk-icon="icon: cloud-upload"></span>
 			<span class="uk-text-middle">Upload files by dropping them here or</span>
 			<div uk-form-custom>
-				<input type="file" multiple>
+				<input type="file" name="showcase" multiple>
 				<span class="uk-link">selecting them</span>.
 			</div>
 		</div>
@@ -167,50 +175,24 @@ $links = [
 	
 	<fieldset>
 		<legend>Preview</legend>
-	
+		<p class="uk-text-center">&lt; not available yet &gt;</p>
 	</fieldset>
+	
+	<div id="error-report" uk-modal>
+		<div class="uk-modal-dialog uk-modal-body">
+			<h2 class="uk-modal-title">Error Report</h2>
+			<pre><ul id="error-report-content"></ul></pre>
+			<p class="uk-text-right">
+				<button class="uk-button uk-button-default uk-modal-close" type="button">OK</button>
+			</p>
+		</div>
+	</div>
 </section>
 
+<?php 
+?>
 <script>
-
-var data = {links: {}};
-
-function update_data() {
-	data.name = document.getElementById("name").value;
-	data.about = document.getElementById("about").value;
-	data.tags = document.getElementById("tags").value;
-	
-	let links = document.querySelectorAll('#artist-links input');
-	for (let i = 0; i < links.length; i++) {
-		if (links[i].value !== "")
-			data.links[links[i].id] = links[i].value;
-		else 
-			delete data.links[links[i].id];
-	}
-}
-
-function update_preview() {
-	
-}
-
-for (let input of document.querySelectorAll("input, textarea")) {
-	input.addEventListener('change', (event) => {
-		update_data();
-		update_preview();
-	});
-}
-
-(document.getElementById("submitButton")).addEventListener('click', (event) => {
-	update_data();
-	document.getElementById('artist-data').value = JSON.stringify(data);
-	(document.getElementById('artist-edit')).submit();
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-	if (document.getElementById('artist-data').value == "")
-		return;
-	
-	data = JSON.parse(document.getElementById('artist-data').value);
+	var data = JSON.parse('<?= $subject->data ?>');
 	
 	document.getElementById("name").value = data.name;
 	document.getElementById("about").value = data.about;
@@ -219,9 +201,122 @@ document.addEventListener('DOMContentLoaded', () => {
 	for (key in data.links) {
 		document.getElementById(key).value = data.links[key];
 	}
-});
-</script>
 
+	function update_data() {
+		data.name = document.getElementById("name").value;
+		data.about = document.getElementById("about").value;
+		data.tags = document.getElementById("tags").value;
+		
+		let links = document.querySelectorAll('#artist-links input');
+		for (let i = 0; i < links.length; i++) {
+			if (links[i].value !== "")
+				data.links[links[i].id] = links[i].value;
+			else 
+				delete data.links[links[i].id];
+		}
+	}
+	
+	function update_files_overview() {
+		let icon = document.getElementById('display-icon');
+		let showcase = document.getElementById('display-showcase');
+		
+		icon.innerHTML = "";
+		if (data.icon != "")
+			icon.appendChild(thumb(data.icon));
+					
+		showcase.innerHTML = "";
+		for (let i = 0; i < data.showcase.length; i++) {
+			showcase.appendChild(thumb(data.showcase[i]));
+		}
+	}
+	
+	function thumb(path) {
+		let article = document.createElement('article');
+		let img = document.createElement('img');
+		let button = document.createElement('button');
+		
+		img.alt = path.replace(/^.*[\\\/]/, '');
+		img.src = '../' + path;
+		
+		button.type = 'button';
+		button.setAttribute('uk-icon', 'trash');
+		button.addEventListener('click', (e) => {remove_image(path)});
+		
+		article.appendChild(img);
+		article.appendChild(button);
+		
+		return article;
+	}
+	
+	async function remove_image(path) {
+		let response = await fetch('<?= $remove_image_url ?>', {
+			method: 'DELETE',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify(path)
+		});
+		
+		let r = await response.json();
+		
+		console.log('delete response, status ' + response.status, r);
+				
+		data.icon = r.icon;
+		data.showcase = r.showcase;
+			
+		update_files_overview();
+		
+		if (r.hasOwnProperty('errors')) {
+			if (r.errors.length != 0) {
+				for(let i = 0; i < r.errors.length; i++) {
+					document.getElementById('error-report-content').insertAdjacentHTML('beforeend', `<li>${r.errors[i]}</li>`);
+				}
+				UIkit.modal(document.getElementById('error-report')).show();
+			}
+		}		
+	}
+	
+	function process_upload_response(e) {
+		let r = JSON.parse(e.target.response);
+		
+		console.info('upload response ' + e.target.status, r);
+		
+		data.icon = r.icon;
+		data.showcase = r.showcase;
+		
+		update_files_overview();		
+		
+		if (r.hasOwnProperty('errors')) {
+			if (r.errors.length != 0) {
+				for(let i = 0; i < r.errors.length; i++) {
+					document.getElementById('error-report-content').insertAdjacentHTML('beforeend', `<li>${r.errors[i]}</li>`);
+				}
+				UIkit.modal(document.getElementById('error-report')).show();
+			}
+		}
+	}
+	
+	function update_preview() {
+		
+	}
+	
+	update_files_overview();
+
+	for (let input of document.querySelectorAll("input, textarea")) {
+		input.addEventListener('change', (event) => {
+			update_data();
+			update_preview();
+		});
+	}
+
+	(document.getElementById("submitButton")).addEventListener('click', (event) => {
+		update_data();
+		document.getElementById('artist-data').value = JSON.stringify(data);
+		(document.getElementById('artist-edit')).submit();
+	});
+
+	document.getElementById('error-report').addEventListener('hidden', (e) => {
+		document.getElementById('error-report-content').innerHTML = "";
+	});
+</script>
 
 <script>
     var bar_banner = document.getElementById('js-progressbar-banner');
@@ -230,52 +325,53 @@ document.addEventListener('DOMContentLoaded', () => {
         url: '<?= $banner_upload_url ?>',
         multiple: false,
 
-        beforeSend: function () {
-            console.log('beforeSend', arguments);
-        },
-        beforeAll: function () {
-            console.log('beforeAll', arguments);
-        },
-        load: function () {
-            console.log('load', arguments);
-        },
-        error: function () {
-            console.log('error', arguments);
-        },
-        complete: function () {
-            console.log('complete', arguments);
-        },
-
         loadStart: function (e) {
-            console.log('loadStart', arguments);
-
             bar_banner.removeAttribute('hidden');
             bar_banner.max = e.total;
             bar_banner.value = e.loaded;
         },
 
         progress: function (e) {
-            console.log('progress', arguments);
-
             bar_banner.max = e.total;
             bar_banner.value = e.loaded;
         },
-
+		
         loadEnd: function (e) {
-            console.log('loadEnd', arguments);
-
+			process_upload_response(e);			
             bar_banner.max = e.total;
             bar_banner.value = e.loaded;
-        },
-
-        completeAll: function () {
-            console.log('completeAll', arguments);
-
             setTimeout(function () {
                 bar_banner.setAttribute('hidden', 'hidden');
             }, 1000);
+        }
+    });
+</script>
 
-            alert('Upload Completed');
+<script>
+    var bar_showcase = document.getElementById('js-progressbar-showcase');
+
+    UIkit.upload('.js-upload-showcase', {
+        url: '<?= $showcase_upload_url ?>',
+        multiple: true,
+
+        loadStart: function (e) {
+            bar_showcase.removeAttribute('hidden');
+            bar_showcase.max = e.total;
+            bar_showcase.value = e.loaded;
+        },
+
+        progress: function (e) {
+            bar_showcase.max = e.total;
+            bar_showcase.value = e.loaded;
+        },
+		
+        loadEnd: function (e) {
+			process_upload_response(e);			
+            bar_showcase.max = e.total;
+            bar_showcase.value = e.loaded;
+            setTimeout(function () {
+                bar_showcase.setAttribute('hidden', 'hidden');
+            }, 1000);
         }
     });
 </script>
