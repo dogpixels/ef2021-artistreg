@@ -49,7 +49,9 @@ class ArtistsController extends AppController
 
 		foreach ($result as $row) {
 			if ($row->data !== null) {
-				$data[] = json_decode($row->data);
+				$d = json_decode(htmlspecialchars_decode($row->data));
+				if ($d->name !== "")
+					$data[] = $d;
 			}
 		}
 

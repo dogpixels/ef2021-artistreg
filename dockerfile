@@ -37,3 +37,7 @@ COPY . /var/www/html
 RUN chown -R www-data:www-data data/
 
 EXPOSE 80
+
+# defy the purpose of this docker container and deploy all contents onto a bare server
+WORKDIR /var/www/html
+RUN smbclient '//192.168.0.2/web/' -U '{USER}%{PASS}' -c 'prompt OFF;recurse ON;cd www.dogpixels.net/efo2021/;mput *'

@@ -26,10 +26,10 @@ class UsersController extends AppController
     {
         parent::beforeFilter($event);
         // Configure certain actions to not require authentication
-        $this->Authentication->addUnauthenticatedActions(['login', 'register', 'recover', 'renew']);
+        $this->Authentication->addUnauthenticatedActions(['login', 'register', 'recover', 'renew', 'keepalive']);
 
         // disable CSRF checks for ajax operations
-		$this->Security->setConfig('unlockedActions', ['setbanner', 'setshowcase', 'remove']);
+		$this->Security->setConfig('unlockedActions', ['setavatar', 'setadvertisement', 'setbanner', 'setshowcase', 'remove', 'keepalive']);
     }
 
     /**
@@ -72,15 +72,15 @@ class UsersController extends AppController
             }
 
             $user = $this->Users->patchEntity($user, $this->request->getData());
-			$user->data = '{"links":{},"name":"","about":"","tags":"","showcase":[],"icon":""}';
+			$user->data = '{"links":{},"name":"","about":"","tags":"","showcase":[],"avatar":"", "banner":"", "advertisement":"", "main":""}';
             if ($this->Users->save($user)) {
                 $this->Flash->success(__("Thank you for signing up. Your account will be reviewed and enabled accordingly within 24 hours. Check back tomorrow!"));
                 
-				// notify tech support
-                // $mailer = new Mailer('default');
-                // $mailer
-                    // ->setSubject(__("[EFO2021] new registration: {$user->email}"))
-                    // ->deliver("New registration: \"{$user->email}\"; review at " . Router::url(['action' => 'admin'], true));
+				notify tech support
+                $mailer = new Mailer('default');
+                $mailer
+                    ->setSubject(__("[EFO2021] new registration: {$user->email}"))
+                    ->deliver("New registration: \"{$user->email}\"; review at " . Router::url(['action' => 'admin'], true));
 				
 				return $this->redirect(['action' => 'index']);
             }
@@ -116,6 +116,7 @@ class UsersController extends AppController
                 $mailer = new Mailer('default');
                 $mailer
                     ->setSubject(__('[EFO2021] Artist Registration Password Recovery'))
+                    ->setTo($subject->email)
                     ->deliver($message);
             }
 
@@ -175,6 +176,10 @@ class UsersController extends AppController
         $result = $this->Authentication->getResult();
         // regardless of POST or GET, redirect if user is logged in
         if ($result->isValid()) {
+            if ($this->request->getSession()->read('impersonating') !== null) {
+                $this->request->getSession()->delete('impersonating');
+            }
+
             $this->Authentication->logout();
             return $this->redirect(['action' => 'login']);
         }
@@ -208,11 +213,11 @@ class UsersController extends AppController
 			$errors = $this->validate(json_decode($subject->data));
 			
 			if (empty($errors)) {
+                $subject->data = htmlspecialchars($subject->data);
 				if ($this->Users->save($subject)) {
 					$this->Flash->success(__("Changes have been saved."));
 					return $this->redirect(['action' => 'index']);
 				}
-				// debug($subject);
 				$this->Flash->error(__("Unknown error, please contact tech support."));
 			}
 			else {
@@ -221,23 +226,60 @@ class UsersController extends AppController
 		}
 		
 		// prepare data
-		$subject->data = mb_ereg_replace("'", "\'", $subject->data);
-		$subject->data = mb_ereg_replace('"', '\"', $subject->data);
+        $subject->data = htmlspecialchars_decode($subject->data);
         
         $this->set('subject', $subject);
 		$this->set('errors', $errors);
+		$this->set('avatar_upload_url', Router::url(['action' => 'setavatar'], true));
+		$this->set('advertisement_upload_url', Router::url(['action' => 'setadvertisement'], true));
 		$this->set('banner_upload_url', Router::url(['action' => 'setbanner'], true));
 		$this->set('showcase_upload_url', Router::url(['action' => 'setshowcase'], true));
 		$this->set('remove_image_url', Router::url(['action' => 'remove'], true));
+		$this->set('keepalive_url', Router::url(['action' => 'keepalive'], true));
     }
+
+    public function impersonate($id) {
+        if ($this->Authentication->getIdentity()->get('level') >= 2) {
+            $user = $this->Users->get($id);
+            $this->request->getSession()->write('impersonating', $user);
+            return $this->redirect('/users/edit');
+        }
+        else {
+            $this->Flash->error(__("Authorization error."));
+            return $this->redirect(['action' => 'index']);
+        }
+    }
+    
+    // public function stopImpersonate() {
+    //     $this->request->getSession()->delete('impersonating');
+    //     return $this->redirect('/users/admin');
+    // }
 	
 	/**
-	 * Upload an avatar / banner file.
+	 * Upload an avatar file.
+	 * @param Number user id
+	 * @return String url of the successfully uploaded image as JSON.
+	 */
+	public function setavatar($id = null) {
+		return $this->upload($id, 'avatar');
+	}
+	
+	/**
+	 * Upload a banner file.
 	 * @param Number user id
 	 * @return String url of the successfully uploaded image as JSON.
 	 */
 	public function setbanner($id = null) {
-		return $this->upload($id, 'icon');
+		return $this->upload($id, 'banner');
+	}
+	
+	/**
+	 * Upload an advertisement file.
+	 * @param Number user id
+	 * @return String url of the successfully uploaded image as JSON.
+	 */
+	public function setadvertisement($id = null) {
+		return $this->upload($id, 'advertisement');
 	}
 	
 	/**
@@ -252,7 +294,7 @@ class UsersController extends AppController
 	/**
 	 * handle image file uploads
 	 * @param Number user id
-	 * @param Number mode: 0 => icon, 1 => showcase
+	 * @param String mode avatar|advertisement|banner|showcase
 	 * @return String url of the successfully uploaded images as JSON.
 	 */
     private function upload($id, $mode) {
@@ -269,6 +311,7 @@ class UsersController extends AppController
 		
 		$max_images = 6;
         $max_filesize = 5 * 1024 * 1024; // 5MB
+        $max_filesize_banner = 25 * 1024 * 1024; // 25MB
 		$files_dir = 'files';
 
 		$files = $this->request->getData('files');
@@ -280,7 +323,7 @@ class UsersController extends AppController
             ->withStringBody(json_encode($return));
         }
 
-        $data = json_decode($subject->data);
+        $data = json_decode(htmlspecialchars_decode($subject->data));
 
         for ($i=0; $i < count($files); $i++) {
             $err  = $files[$i]->getError();
@@ -299,7 +342,12 @@ class UsersController extends AppController
 
             $size = $files[$i]->getSize();
 
-            if ($size > $max_filesize) {
+            if ($mode !== 'banner' && $size > $max_filesize) {
+                $return['errors'][$i] = "{$orig}: file too large ({$size} bytes)";
+                continue;
+            }
+
+            if ($mode === 'banner' && $size > $max_filesize_banner) {
                 $return['errors'][$i] = "{$orig}: file too large ({$size} bytes)";
                 continue;
             }
@@ -327,12 +375,14 @@ class UsersController extends AppController
             $files[$i]->moveTo($path . DS . $name);
 
             switch($mode) {
-                case 'icon':     $data->icon = $path . '/' . $name; break;
-                case 'showcase': $data->showcase[] = $path . '/' . $name; break;
+                case 'avatar':     		$data->avatar = $path . '/' . $name; break;
+                case 'advertisement':   $data->advertisement = $path . '/' . $name; break;
+                case 'banner':     		$data->banner = $path . '/' . $name; break;
+                case 'showcase': 		$data->showcase[] = $path . '/' . $name; break;
             }
         }
 
-        $d = json_encode($data);
+        $d = htmlspecialchars(json_encode($data));
 
         if ($d) {
             $subject->data = $d;
@@ -356,7 +406,9 @@ class UsersController extends AppController
             // $status = 400;
         // }
 
-        $return['icon'] = $data->icon;
+        $return['avatar'] = $data->avatar;
+        $return['advertisement'] = $data->advertisement;
+        $return['banner'] = $data->banner;
         $return['showcase'] = $data->showcase;
 
         return $this->response->withType('application/json')
@@ -366,7 +418,7 @@ class UsersController extends AppController
 
 	/**
 	 * remove an image from user data listing and filesystem
-	 * @param String relative file path like files/13/icon.jpg
+	 * @param String relative file path like files/13/avatar.jpg
 	 * @param Number user id
 	 */
     public function remove($id = null) {
@@ -390,11 +442,13 @@ class UsersController extends AppController
 			->withStringBody(json_encode($return));
 		}
 
-        $data = json_decode($subject->data);
+        $data = json_decode(htmlspecialchars_decode($subject->data));
 
         // check if user is permitted to that file
         if (
-			$filepath !== $data->icon &&
+			$filepath !== $data->avatar &&
+			$filepath !== $data->advertisement &&
+			$filepath !== $data->banner &&
 			!in_array($filepath, $data->showcase)
 		) {
 			$return['errors'][] = "{$filepath}: permission denied to user {$subject->id}";
@@ -403,9 +457,17 @@ class UsersController extends AppController
 			->withStringBody(json_encode($return));
 		}
 
-        // delete if icon
-        if ($filepath === $data->icon)
-        $data->icon = "";
+        // delete if avatar
+        if ($filepath === $data->avatar)
+        $data->avatar = "";
+	
+        // delete if advertisement
+        if ($filepath === $data->advertisement)
+        $data->advertisement = "";
+	
+        // delete if banner
+        if ($filepath === $data->banner)
+        $data->banner = "";
                     
         // delete if in showcase
         $offset = array_search($filepath, $data->showcase, true);
@@ -414,7 +476,7 @@ class UsersController extends AppController
         }
 
         // save user data
-        $d = json_encode($data);
+        $d = htmlspecialchars(json_encode($data));
 
         if ($d) {
             $subject->data = $d;
@@ -442,37 +504,24 @@ class UsersController extends AppController
         else 
             $return['errors']['filesystem'] = "{$filepath}: file not found";
 
-        $return['icon'] = $data->icon;
+        $return['avatar'] = $data->avatar;
+        $return['advertisement'] = $data->advertisement;
+        $return['banner'] = $data->banner;
         $return['showcase'] = $data->showcase;
 
         return $this->response->withType('application/json')
         ->withStatus($status)
         ->withStringBody(json_encode($return));
     }
-
-	/**
-	 * save image to user data in database
-	 * @param User user to save data for
-	 * @param String url / file name to save
-	 * @return Array: [status => bool, msg = ""]
-	 */
-	private function save_user_image($user, $url, $set_banner) {
-		$max_images = 6;
-		$showcase = 'showcase';
+	
+	public function keepalive() {
+		$this->autoRender = false;
 		
-		$data = json_decode($user->data);
-			
-		if ($set_banner)
-			$data->icon = $url;
+		$user = $this->Authentication->getIdentity();
+		if (!$user)
+			return $this->response->withStatus(401);
 		
-		else if (!$set_banner && count($data->{$showcase}) < $max_images)
-			$data->{$showcase}[] = $url;
-		
-		$user->data = json_encode($data);
-		
-		$this->Users->save($user);
-		
-		return ['icon' => $data->icon, 'showcase' => $data->showcase];
+		return $this->response->withStatus(200);
 	}
 
     /**
@@ -483,9 +532,9 @@ class UsersController extends AppController
     public function admin()
     {
         if ($this->Authentication->getIdentity()->get('level') >= 2) {
-            $this->set('users', $this->Users->find());
+            $this->set('users', $this->Users->find()->order(['id' => 'DESC']));
             $this->set('enableurl', Router::url(['controller' => 'users', 'action' => 'enable']));
-            $this->set('editurl', Router::url(['controller' => 'users', 'action' => 'edit']));
+            $this->set('editurl', Router::url(['controller' => 'users', 'action' => 'impersonate']));
             $this->set('deleteurl', Router::url(['controller' => 'users', 'action' => 'delete']));
         }
         else {
@@ -596,10 +645,10 @@ class UsersController extends AppController
 		if (strlen($d->name) > 100)
 			$errors[] = 'name_too_long';
 		
-		if (strlen($d->about) > 4000)
+		if (strlen($d->about) > 1500)
 			$errors[] = 'about_too_long';
 		
-		if (strlen($d->tags) > 300)
+		if (strlen($d->tags) > 200)
 			$errors[] = 'tags_too_long';
 		
 		if (str_contains($d->tags, ','))
@@ -617,6 +666,22 @@ class UsersController extends AppController
 			
 			if (strlen($value) > 100)
 				$errors[] = "links_${key}_too_long";
+
+            if ($key !== 'mail' && $key !== 'homepage') {
+                if (
+                    strpos($value, "http") !== false || 
+                    strpos($value, "www") !== false || 
+                    strpos($value, ".com") !== false ||
+                    strpos($value, ".net") !== false ||
+                    strpos($value, ".me") !== false
+                )
+                    $errors[] = "links_${key}_is_url";
+            }
+
+            if ($key === 'discord') {
+                if (preg_match('/\w+#\d{4}$/i', $value) === 0)
+                    $errors[] = "links_discord_missing_suffix";
+            }
 		}
 		
 		return $errors;

@@ -9,7 +9,7 @@
     <?= $this->fetch('meta') ?>
 
     <?= $this->Html->css(['cake.css', 'uikit.min.css', 'artistreg.css']) ?>
-    <?= $this->Html->script(['uikit.min.js', 'uikit-icons.min.js', 'artistreg.js']) ?>
+    <?= $this->Html->script(['uikit.min.js', 'uikit-icons.min.js']) ?>
 
     <?= $this->fetch('css') ?>
     <?= $this->fetch('script') ?>

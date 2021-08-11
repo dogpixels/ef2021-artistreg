@@ -114,7 +114,7 @@ class Application extends BaseApplication
 			$csrf = new CsrfProtectionMiddleware();
 			$csrf->skipCheckCallback(function ($request) {
 				// Skip token check for the following actions
-				if (in_array($request->getParam('action'), ['setbanner', 'setshowcase', 'remove'])) {
+				if (in_array($request->getParam('action'), ['setavatar', 'setadvertisement', 'setbanner', 'setshowcase', 'remove', 'keepalive'])) {
 					return true;
 				}
 			});
@@ -169,6 +169,8 @@ class Application extends BaseApplication
             ]
         ]);
 
+        // source: https://discourse.cakephp.org/t/cakephp-4-x-impersonate-login-as-different-user/9559/3
+        $authenticationService->loadAuthenticator(Authenticator\SessionImpersonateAuthenticator::class);
         // Load the authenticators, you want session first
         $authenticationService->loadAuthenticator('Authentication.Session');
         // Configure form data check to pick email and password
